@@ -1,3 +1,9 @@
+#ifdef __unix__                    
+const int LINUX = 1;
+#elif defined(_WIN32) || defined(WIN32)
+const int LINUX = 0;
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -145,7 +151,7 @@ void write_image(const char* file_name, const char* dir_name, byte* field, uint3
     // Create directory if it doesn't exist.
     struct stat st = {0};
     if (stat(dir_name, &st) == -1) {
-        if (mkdir(dir_name)) {            
+        if (mkdir(dir_name, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH)) {            
             printf("Couldn't create directory: %s\n", strerror(errno));
             return;
         }
