@@ -1,9 +1,3 @@
-#ifdef __unix__                    
-const int LINUX = 1;
-#elif defined(_WIN32) || defined(WIN32)
-const int LINUX = 0;
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -41,7 +35,7 @@ struct CmdArgs {
 byte* metadata;
 int metadata_size;
 
-inline void strcpy_alloc(char** strp, char* src) {
+void strcpy_alloc(char** strp, char* src) {
     int string_len  = strlen(src);
     *strp = (char*) malloc((string_len + 1) * sizeof(char));
     strcpy(*strp, src);
@@ -218,11 +212,11 @@ short get_color_bitmap(byte* pixels, int bit_row, int bit_col, int width, int he
     return res;
 }
 
-inline byte get_color(byte* field, int row_idx, int col_idx, int width) {
+byte get_color(byte* field, int row_idx, int col_idx, int width) {
     return *(field + row_idx * width + col_idx);
 }
 
-inline void set_color(byte color, byte* field, int row_idx, int col_idx, int width) {
+void set_color(byte color, byte* field, int row_idx, int col_idx, int width) {
     *(field + row_idx * width + col_idx) = color;
 }
 
