@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <string.h>
 #include <math.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -22,62 +22,8 @@ typedef unsigned int uint16;
 typedef unsigned long uint32;
 typedef unsigned char byte;
 
-typedef unsigned int uint16;
-typedef unsigned long uint32;
-typedef unsigned char byte;
-
-struct CmdArgs { 
-    char* input_file_name;
-    char* output_directory;
-    int max_iters, interval;
-};
-
 byte* metadata;
 int metadata_size;
-
-void strcpy_alloc(char** strp, char* src) {
-    int string_len  = strlen(src);
-    *strp = (char*) malloc((string_len + 1) * sizeof(char));
-    strcpy(*strp, src);
-}
-
-// Returns 1 for valid arguments, 0 otherwise.
-int parse_cmdargs(int argc, char* argv[], struct CmdArgs* cmdargs) {     
-    if (argc < 3) {
-        printf("You didn't provide enough arguments.\n");
-        return 0;
-    }
-    
-    for (int i = 1; i < argc; i++) {
-        // Input file name.
-        if (*(argv[i] + 2) == 'i')
-            strcpy_alloc(&(cmdargs->input_file_name), argv[i] + 8);
-
-        // Output directory.
-        else if (*(argv[i] + 2) == 'o')
-            strcpy_alloc(&(cmdargs->output_directory), argv[i] + 9);
-
-        // Maximum ages.
-        else if (*(argv[i] + 2) == 'm') {
-            cmdargs->max_iters = strtol(argv[i] + 11, NULL, 10);
-            if (cmdargs->max_iters == 0) {
-                exit(EXIT_SUCCESS);
-            }
-        }
-
-        // Picture updating frequency in seconds.
-        else if (*(argv[i] + 2) == 'd') {  
-            cmdargs->interval = strtol(argv[i] + 12, NULL, 10);
-        } 
-    }
-
-    if (cmdargs->input_file_name == NULL || cmdargs->output_directory == NULL)
-        return 0;
-
-    return 1;
-}
-
-
 
 void read_image(const char* file_name, byte** pixels, uint32* width, uint32* height) {
     //Open the file for reading in binary mode
@@ -139,7 +85,7 @@ void read_image(const char* file_name, byte** pixels, uint32* width, uint32* hei
     fclose(image_file);
 }
 
-inline byte get_color(byte* field, int row_idx, int col_idx, int width);
+byte get_color(byte* field, int row_idx, int col_idx, int width);
 
 void write_image(const char* file_name, const char* dir_name, byte* field, uint32 width, uint32 height) {
     // Create directory if it doesn't exist.
@@ -212,6 +158,54 @@ short get_color_bitmap(byte* pixels, int bit_row, int bit_col, int width, int he
     return res;
 }
 
+void strcpy_alloc(char** strp, char* src) {
+    int string_len  = strlen(src);
+    *strp = (char*) malloc((string_len + 1) * sizeof(char));
+    strcpy(*strp, src);
+}
+
+struct CmdArgs { 
+    char* input_file_name;
+    char* output_directory;
+    int max_iters, interval;
+};
+
+// Returns 1 for valid arguments, 0 otherwise.
+int parse_cmdargs(int argc, char* argv[], struct CmdArgs* cmdargs) {     
+    if (argc < 3) {
+        printf("You didn't provide enough arguments.\n");
+        return 0;
+    }
+    
+    for (int i = 1; i < argc; i++) {
+        // Input file name.
+        if (*(argv[i] + 2) == 'i')
+            strcpy_alloc(&(cmdargs->input_file_name), argv[i] + 8);
+
+        // Output directory.
+        else if (*(argv[i] + 2) == 'o')
+            strcpy_alloc(&(cmdargs->output_directory), argv[i] + 9);
+
+        // Maximum ages.
+        else if (*(argv[i] + 2) == 'm') {
+            cmdargs->max_iters = strtol(argv[i] + 11, NULL, 10);
+            if (cmdargs->max_iters == 0) {
+                exit(EXIT_SUCCESS);
+            }
+        }
+
+        // Picture updating frequency in seconds.
+        else if (*(argv[i] + 2) == 'd') {  
+            cmdargs->interval = strtol(argv[i] + 12, NULL, 10);
+        } 
+    }
+
+    if (cmdargs->input_file_name == NULL || cmdargs->output_directory == NULL)
+        return 0;
+
+    return 1;
+}
+
 byte get_color(byte* field, int row_idx, int col_idx, int width) {
     return *(field + row_idx * width + col_idx);
 }
@@ -220,11 +214,57 @@ void set_color(byte color, byte* field, int row_idx, int col_idx, int width) {
     *(field + row_idx * width + col_idx) = color;
 }
 
+// Any live cell with two or three live neighbours survives.
+// Any dead cell with three live neighbours becomes a live cell.
+// All other live cells die in the next generation. Similarly, all other dead cells stay dead.
+void next_iteration(byte** fieldp, uint32* widthp, uint32* heightp) {
+    int width = *widthp;
+    int height = *heightp;
+    int total_cells = (width) * (height);
+    int extended_total_cells = (width + 1) * (height + 1);
+    byte* buffer = (byte*) calloc(extended_total_cells, 1);
+
+    for (int row_idx = 0; row_idx < height; row_idx++) {
+        for (int col_idx = 0; col_idx < width; col_idx++) {
+            byte alive = get_color(*fieldp, row_idx, col_idx, width);
+            
+            set_color(alive, buffer, row_idx, col_idx, width + 1);
+            
+            int neighbors_alive = 0;
+            for (int i = row_idx - 1; i <= row_idx + 1; i++) {
+                for (int j = col_idx - 1; j <= col_idx + 1; j++) {                    
+                    if (i >= 0 && i < height && j >= 0 && j < width && get_color(*fieldp, i, j, width)) {
+                        neighbors_alive++;
+                    }
+                }
+            }
+
+            if (alive) {
+                neighbors_alive--; // Cell itself was counted as living neighbor.
+                if (neighbors_alive != 2 && neighbors_alive != 3) {
+                    set_color(0, buffer, row_idx, col_idx, width + 1);
+                }
+            }
+            else if (neighbors_alive == 3) {
+                set_color(1, buffer, row_idx, col_idx, width + 1);
+            }            
+        }
+    }
+
+    
+    for (int row_idx = 0; row_idx < height; row_idx++) {
+        for (int col_idx = 0; col_idx < width; col_idx++) {
+            byte alive = get_color(buffer, row_idx, col_idx, width + 1);                
+            set_color(alive, *fieldp, row_idx, col_idx, width);
+        }
+    }
+    free(buffer);
+}
+
 int main(int argc, char* argv[]) {    
     // Parse cmd arguments.
     struct CmdArgs cmdargs = { NULL, NULL, 0, .interval = 1 };
     if (!parse_cmdargs(argc, argv, &cmdargs)) {
-        printf("Incorrect argumets.\n");
         exit(EXIT_FAILURE);
     }    
 
@@ -243,15 +283,25 @@ int main(int argc, char* argv[]) {
             set_color(color, field, width - 1 - i, j, width);
         }
     }   
-    free(pixels);   
+    free(pixels);    
 
-    // Create file name.        
+    // Play.
+    printf("Playing:\n");
     char file_format[5] = { '.', 'b', 'm', 'p', '\0' };
-    char* file_name = (char*) "output";
-    char* file_name_full = (char*) malloc(6 + 5);
-    memcpy(file_name_full, file_name, 6);
-    memcpy(file_name_full + 6, file_format, 5);
-    write_image(file_name_full, cmdargs.output_directory, field, width, height);    
+    char str[1000];
+    for (int iter = 0; (!cmdargs.max_iters) || iter < cmdargs.max_iters; iter++) {
+        printf("Epoch: %d\n", iter + 1);
+        // Create file name.        
+        int file_name_length = sprintf(str, "%d", iter + 1);
+        char* file_name = (char*) malloc(file_name_length + 5);
+        memcpy(file_name, str, file_name_length);
+        memcpy(file_name + file_name_length, file_format, 5);
+
+        next_iteration(&field, &width, &height);
+        write_image(file_name, cmdargs.output_directory, field, width, height);
+        sleep(cmdargs.interval);        
+    }
+    
 
     return 0;
 }
