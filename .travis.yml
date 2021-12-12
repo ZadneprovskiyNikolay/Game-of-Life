@@ -1,3 +1,4 @@
 language: C
 script: 
 - gcc game_of_life.c -o game_of_life
+- gcc tests.c -o tests
