@@ -32,6 +32,9 @@ struct CmdArgs {
     int max_iters, interval;
 };
 
+byte* metadata;
+int metadata_size;
+
 inline void strcpy_alloc(char** strp, char* src) {
     int string_len  = strlen(src);
     *strp = (char*) malloc((string_len + 1) * sizeof(char));
@@ -45,7 +48,7 @@ int parse_cmdargs(int argc, char* argv[], struct CmdArgs* cmdargs) {
         return 0;
     }
     
-    for (int i = 0; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
         // Input file name.
         if (*(argv[i] + 2) == 'i')
             strcpy_alloc(&(cmdargs->input_file_name), argv[i] + 8);
@@ -73,6 +76,8 @@ int parse_cmdargs(int argc, char* argv[], struct CmdArgs* cmdargs) {
 
     return 1;
 }
+
+
 
 void read_image(const char* file_name, byte** pixels, uint32* width, uint32* height) {
     //Open the file for reading in binary mode
@@ -124,6 +129,74 @@ void read_image(const char* file_name, byte** pixels, uint32* width, uint32* hei
         memcpy(cur_rowp, padded_row, unpadded_row_size);     
         cur_rowp += unpadded_row_size;
     }
+
+    // Copy meta information.
+    metadata_size = data_offset;
+    metadata = (byte*) malloc(data_offset);
+    fseek(image_file, 0, SEEK_SET);
+    fread(metadata, data_offset, 1, image_file);
+
+    fclose(image_file);
+}
+
+inline byte get_color(byte* field, int row_idx, int col_idx, int width);
+
+void write_image(const char* file_name, const char* dir_name, byte* field, uint32 width, uint32 height) {
+    // Create directory if it doesn't exist.
+    struct stat st = {0};
+    if (stat(dir_name, &st) == -1) {
+        if (mkdir(dir_name)) {            
+            printf("Couldn't create directory: %s\n", strerror(errno));
+            return;
+        }
+    }    
+
+    // Create file path.
+    char* file_path = (char*) calloc(sizeof(dir_name) + sizeof(file_name) + 2, 1);
+    memcpy(file_path, dir_name, strlen(dir_name));
+    file_path[strlen(dir_name)] = '\\';
+    memcpy(file_path + strlen(dir_name) + 1, file_name, strlen(file_name));
+
+    FILE* image_file = fopen(file_path, "wb+");
+    if (image_file == NULL) {
+        printf("Could not create output file.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    int padded_row_size = (width + (32 - width % 32)) / 8.0f;
+    int unpadded_row_size = (width + (8 - width % 8)) / 8.0f;
+    uint32 file_size = metadata_size + width * padded_row_size;
+    
+    // Rewrite metadata: file_size, width, height.
+    memcpy(metadata + FILE_SIZE_OFFSET, &file_size, 4);
+    memcpy(metadata + WIDTH_OFFSET, &width, 4);
+    memcpy(metadata + HEIGHT_OFFSET, &height, 4);
+    fwrite(metadata, metadata_size, 1, image_file);
+
+    // Write pixel data.
+    const int bit_padding = unpadded_row_size * 8 - width;
+    const int padding_size = padded_row_size - unpadded_row_size;
+    byte* unpadded_row = (byte*) malloc(unpadded_row_size);
+    byte* padding = (byte*) calloc(padding_size, 1);    
+    for (int row_idx = 0; row_idx < height; row_idx++) {
+
+        // Clear unpadded row.
+        for (int byte_idx = 0; byte_idx < unpadded_row_size; byte_idx++) 
+            unpadded_row[byte_idx] = 0;
+
+        // Create row.        
+        for (int col_idx = 0; col_idx < width; col_idx++) {            
+            int bit = get_color(field, row_idx, col_idx, width);
+            int byte_idx = col_idx / 8;
+            unpadded_row[byte_idx] += (bit << (7 - col_idx % 8));
+        }
+
+        // Write row.
+        fwrite(unpadded_row, unpadded_row_size, 1, image_file);
+        fwrite(padding, padding_size, 1, image_file);        
+    }
+
+    fclose(image_file);
 }
 
 short get_color_bitmap(byte* pixels, int bit_row, int bit_col, int width, int height, int bit_padding) {
@@ -151,8 +224,9 @@ int main(int argc, char* argv[]) {
     // Parse cmd arguments.
     struct CmdArgs cmdargs = { NULL, NULL, 0, .interval = 1 };
     if (!parse_cmdargs(argc, argv, &cmdargs)) {
+        printf("Incorrect argumets.\n");
         exit(EXIT_FAILURE);
-    }   
+    }    
 
     // Read image bits.
     uint32 width, height;
@@ -170,6 +244,14 @@ int main(int argc, char* argv[]) {
         }
     }   
     free(pixels);   
+
+    // Create file name.        
+    char file_format[5] = { '.', 'b', 'm', 'p', '\0' };
+    char* file_name = (char*) "output";
+    char* file_name_full = (char*) malloc(6 + 5);
+    memcpy(file_name_full, file_name, 6);
+    memcpy(file_name_full + 6, file_format, 5);
+    write_image(file_name_full, cmdargs.output_directory, field, width, height);    
 
     return 0;
 }
