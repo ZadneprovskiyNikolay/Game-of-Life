@@ -101,6 +101,11 @@ void read_image(const char* file_name, byte** pixels, uint32* width, uint32* hei
     fseek(image_file, BITS_PER_PIXEL_OFFSET, SEEK_SET);
     fread(&bits_per_pixel, 2, 1, image_file);
 
+    if (bits_per_pixel != 1) {
+        printf("Pitcture is not nomochrome (bits per pixel: %d)\n", bits_per_pixel);            
+        exit(EXIT_FAILURE);
+    }
+
     printf("Intial picture:\n");
     printf("width: %d, height: %d\n\n", *width, *height);
 
