@@ -251,14 +251,45 @@ void next_iteration(byte** fieldp, uint32* widthp, uint32* heightp) {
         }
     }
 
-    
-    for (int row_idx = 0; row_idx < height; row_idx++) {
-        for (int col_idx = 0; col_idx < width; col_idx++) {
-            byte alive = get_color(buffer, row_idx, col_idx, width + 1);                
-            set_color(alive, *fieldp, row_idx, col_idx, width);
+    // Go through imaginary cells next to boundary and make them alive if needed.    
+    int extended = 0;
+    for (int col_idx = 1; col_idx < width - 1; col_idx++) {
+        int living_neighbors = 0; 
+        for (int j = col_idx - 1; j < col_idx + 2; j++) {
+            living_neighbors += get_color(*fieldp, height - 1, j, width);
+        }
+        if (living_neighbors == 3) {
+            set_color(1, buffer, height, col_idx, width + 1);            
+            extended = 1;
         }
     }
-    free(buffer);
+
+    for (int row_idx = 1; row_idx < (*heightp) - 1; row_idx++) {
+        int living_neighbors = 0; 
+        for (int i = row_idx - 1; i < row_idx + 2; i++) {
+            living_neighbors += get_color(*fieldp, i, width - 1, width);
+        }
+        if (living_neighbors == 3) {
+            set_color(1, buffer, row_idx, width, width + 1);
+            extended = 1;
+        }
+    }
+    
+    if (extended) {
+        free(*fieldp);
+        *fieldp = buffer;
+        (*widthp)++;
+        (*heightp)++;
+    } 
+    else {
+        for (int row_idx = 0; row_idx < height; row_idx++) {
+            for (int col_idx = 0; col_idx < width; col_idx++) {
+                byte alive = get_color(buffer, row_idx, col_idx, width + 1);                
+                set_color(alive, *fieldp, row_idx, col_idx, width);
+            }
+        }
+        free(buffer);
+    }
 }
 
 int main(int argc, char* argv[]) {    
